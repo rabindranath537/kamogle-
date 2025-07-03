@@ -50,14 +50,20 @@ input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') sendBtn.click();
 });
 
-// Typing indicator
+// Listen for typing event from the server
+socket.on('typing', (isTyping) => {
+    const typingIndicator = document.getElementById('typing-indicator');
+    typingIndicator.textContent = isTyping ? 'Stranger is typing...' : '';
+});
+
+// Send typing status when user types
 input.addEventListener('input', () => {
     if (currentRoom) {
         socket.emit('typing', { room: currentRoom, typing: true });
         clearTimeout(typingTimeout);
         typingTimeout = setTimeout(() => {
             socket.emit('typing', { room: currentRoom, typing: false });
-        }, 1000);
+        }, 1000); // 1 second after user stops typing
     }
 });
 
@@ -72,11 +78,6 @@ socket.on('message', (data) => {
     messages.appendChild(msgDiv);
     messages.scrollTop = messages.scrollHeight;
     playNotif();
-});
-
-// Typing indicator from stranger
-socket.on('typing', (isTyping) => {
-    typingIndicator.textContent = isTyping ? 'Stranger is typing...' : '';
 });
 
 // Stranger disconnected
