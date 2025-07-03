@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KAMOGLE Clone</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div id="main-container">
+        <h1>KAMOGLE</h1>
+        <div id="chat-area">
+            <div id="messages"></div>
+            <div id="typing-indicator"></div>
+            <div id="input-area">
+                <input type="text" id="message-input" placeholder="Type your message...">
+                <button id="send-btn">Send</button>
+                <button id="next-btn">Next</button>
+                <div id="emoji-picker">
+                    <span class="emoji">😀</span>
+                    <span class="emoji">😂</span>
+                    <span class="emoji">😍</span>
+                    <span class="emoji">😎</span>
+                    <span class="emoji">😭</span>
+                    <span class="emoji">👍</span>
+                    <span class="emoji">❤️</span>
+                    <span class="emoji">🔥</span>
+                </div>
+            </div>
+        </div>
+        <div id="footer">
+            <p>You're chatting with a random stranger on <b>KAMOGLE</b>.<br>
+            <small>This is an open-source clone for learning purposes.</small></p>
+            <button id="dark-toggle">🌙 Dark Mode</button>
+        </div>
+    </div>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="/static/chat.js"></script>
+</body>
+</html>
