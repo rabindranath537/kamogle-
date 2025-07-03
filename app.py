@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()
+
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import uuid
@@ -95,6 +98,4 @@ def on_disconnect():
         del user_rooms[sid]
 
 if __name__ == '__main__':
-    import eventlet
-    eventlet.monkey_patch()
-    socketio.run(app, host="0.0.0.0", port=5000)
+    socketio.run(app, host="0.0.0.0", port=5000, debug=True)
