@@ -11,19 +11,6 @@ const sendBtn = document.getElementById('send-btn');
 const nextBtn = document.getElementById('next-btn');
 const typingIndicator = document.getElementById('typing-indicator');
 
-// Video chat variables
-const videoArea = document.getElementById('video-area');
-const localVideo = document.getElementById('localVideo');
-const remoteVideo = document.getElementById('remoteVideo');
-const startVideoBtn = document.getElementById('start-video-btn');
-const muteBtn = document.getElementById('mute-btn');
-const stopVideoBtn = document.getElementById('stop-video-btn');
-let localStream = null;
-let peerConnection = null;
-const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-let isMuted = false;
-let isVideoStopped = false;
-
 // E2EE variables
 let myECDHKey = null;
 let myPublicKey = null;
@@ -69,29 +56,6 @@ socket.on('stranger_found', (data) => {
 
 // Handle E2EE key exchange in signaling
 socket.on('signal', async (data) => {
-    if (!peerConnection && data.sdp) {
-        startVideoBtn.click();
-        // Show message to user to turn on their video if not already
-        const info = document.createElement('div');
-        info.textContent = 'Stranger started video. Click "Start Video" to join!';
-        info.style.color = '#1c7ed6';
-        info.style.fontWeight = 'bold';
-        messages.appendChild(info);
-        messages.scrollTop = messages.scrollHeight;
-    }
-    if (data.sdp) {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
-        if (data.sdp.type === 'offer') {
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-            socket.emit('signal', { room: currentRoom, sdp: answer });
-        }
-    }
-    if (data.candidate) {
-        try {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-        } catch (e) {}
-    }
     if (data.e2ee_pub) {
         // Import peer's public key
         const peerPubKey = await window.crypto.subtle.importKey(
@@ -244,101 +208,27 @@ socket.on('stranger_disconnected', () => {
     playNotif();
 });
 
-startVideoBtn.addEventListener('click', async () => {
-    if (!localStream) {
-        try {
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            localVideo.srcObject = localStream;
-            startPeerConnection();
-            videoArea.style.display = 'flex';
-            startVideoBtn.disabled = true;
-            muteBtn.disabled = false;
-            stopVideoBtn.disabled = false;
-        } catch (err) {
-            alert('Could not access camera/mic: ' + err.message);
-            startVideoBtn.disabled = false;
-        }
-    } else {
-        startPeerConnection();
-    }
-});
-
-function startPeerConnection() {
-    if (peerConnection) return;
-    peerConnection = new RTCPeerConnection(rtcConfig);
-    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-    peerConnection.onicecandidate = (event) => {
-        if (event.candidate && currentRoom) {
-            socket.emit('signal', { room: currentRoom, candidate: event.candidate });
-        }
-    };
-    peerConnection.ontrack = (event) => {
-        remoteVideo.srcObject = event.streams[0];
-    };
-    if (myRole === 'You') {
-        peerConnection.createOffer().then(offer => {
-            peerConnection.setLocalDescription(offer);
-            socket.emit('signal', { room: currentRoom, sdp: offer });
-        });
-    }
+function logDebug(...args) {
+    console.log('[KAMOGLE DEBUG]', ...args);
 }
 
+// Add debug logs to signaling and WebRTC events
 socket.on('signal', async (data) => {
-    if (!peerConnection && data.sdp) {
-        startVideoBtn.click();
-        // Show message to user to turn on their video if not already
-        const info = document.createElement('div');
-        info.textContent = 'Stranger started video. Click "Start Video" to join!';
-        info.style.color = '#1c7ed6';
-        info.style.fontWeight = 'bold';
-        messages.appendChild(info);
-        messages.scrollTop = messages.scrollHeight;
+    logDebug('Received signal', data);
+    if (data.e2ee_pub) {
+        logDebug('Received E2EE public key');
+        // Import peer's public key
+        const peerPubKey = await window.crypto.subtle.importKey(
+            'jwk', data.e2ee_pub, { name: 'ECDH', namedCurve: 'P-256' }, true, []
+        );
+        // Derive shared secret
+        sharedSecret = await window.crypto.subtle.deriveKey(
+            { name: 'ECDH', public: peerPubKey },
+            myECDHKey.privateKey,
+            { name: 'AES-GCM', length: 256 },
+            false,
+            ['encrypt', 'decrypt']
+        );
+        aesKey = sharedSecret;
     }
-    if (data.sdp) {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
-        if (data.sdp.type === 'offer') {
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-            socket.emit('signal', { room: currentRoom, sdp: answer });
-        }
-    }
-    if (data.candidate) {
-        try {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-        } catch (e) {}
-    }
-});
-
-// Reset video on next/leave
-nextBtn.addEventListener('click', () => {
-    if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-    }
-    if (localVideo) localVideo.srcObject = null;
-    if (remoteVideo) remoteVideo.srcObject = null;
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-    }
-    videoArea.style.display = 'none';
-    startVideoBtn.disabled = false;
-    muteBtn.textContent = 'Mute';
-    stopVideoBtn.textContent = 'Stop Video';
-    muteBtn.disabled = true;
-    stopVideoBtn.disabled = true;
-});
-
-muteBtn.addEventListener('click', () => {
-    if (!localStream) return;
-    isMuted = !isMuted;
-    localStream.getAudioTracks().forEach(track => track.enabled = !isMuted);
-    muteBtn.textContent = isMuted ? 'Unmute' : 'Mute';
-});
-
-stopVideoBtn.addEventListener('click', () => {
-    if (!localStream) return;
-    isVideoStopped = !isVideoStopped;
-    localStream.getVideoTracks().forEach(track => track.enabled = !isVideoStopped);
-    stopVideoBtn.textContent = isVideoStopped ? 'Start Video' : 'Stop Video';
 });
