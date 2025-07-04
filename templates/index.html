@@ -3,37 +3,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KAMOGLE Clone</title>
+    <title>KAMOGLE</title>
     <link rel="stylesheet" href="/static/style.css">
+    <style>
+        /* Responsive and modern enhancements */
+        #main-container {
+            max-width: 480px;
+            margin: 32px auto;
+            background: #fff;
+            border-radius: 14px;
+            box-shadow: 0 2px 16px rgba(0,0,0,0.13);
+            padding: 0;
+            overflow: hidden;
+        }
+        body.dark-mode #main-container { background: #232323; }
+        #header-row { display: flex; align-items: center; justify-content: space-between; padding: 18px 18px 0 18px; }
+        #chat-area { display: flex; flex-direction: column; height: 60vh; min-height: 340px; max-height: 70vh; padding: 0 0 8px 0; }
+        #messages { flex: 1; overflow-y: auto; padding: 16px; font-size: 1.05em; background: #f8f9fa; }
+        body.dark-mode #messages { background: #181818; color: #eee; }
+        #input-area { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: #f1f3f5; }
+        body.dark-mode #input-area { background: #232323; }
+        #message-input { flex: 1; padding: 10px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 1em; outline: none; background: #fff; color: #222; }
+        body.dark-mode #message-input { background: #181818; color: #eee; border: 1px solid #444; }
+        #send-btn, #next-btn, #dark-toggle { padding: 8px 14px; border: none; border-radius: 6px; background: #1c7ed6; color: #fff; font-weight: bold; cursor: pointer; font-size: 1em; transition: background 0.2s; }
+        #send-btn:hover, #next-btn:hover, #dark-toggle:hover { background: #1864ab; }
+        #dark-toggle { margin-left: 8px; background: #495057; }
+        body.dark-mode #dark-toggle { background: #eee; color: #232323; }
+        #typing-indicator { font-size: 0.95em; color: #868e96; margin: 0 0 0 16px; }
+        .user-message { background: #d0ebff; color: #222; padding: 7px 12px; border-radius: 8px; margin: 6px 0 6px auto; max-width: 80%; text-align: right; display: inline-block; }
+        body.dark-mode .user-message { background: #339af0; color: #fff; }
+        #messages div:not(.user-message) { background: #f1f3f5; color: #232323; padding: 7px 12px; border-radius: 8px; margin: 6px auto 6px 0; max-width: 80%; text-align: left; display: inline-block; }
+        body.dark-mode #messages div:not(.user-message) { background: #343a40; color: #fff; }
+        #video-area { display: flex; flex-direction: column; align-items: center; margin: 18px 0 8px 0; gap: 8px; }
+        .video-wrapper { display: flex; gap: 12px; }
+        video { width: 160px; height: 120px; background: #222; border-radius: 10px; margin: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        #video-controls { display: flex; gap: 8px; margin-top: 6px; }
+        #video-controls button { padding: 6px 12px; border-radius: 6px; border: none; background: #495057; color: #fff; font-size: 0.95em; cursor: pointer; }
+        #video-controls button:hover { background: #1c7ed6; }
+        @media (max-width: 600px) { #main-container { max-width: 100vw; margin: 0; border-radius: 0; box-shadow: none; } #chat-area { min-height: 50vh; max-height: 90vh; } #input-area { padding: 8px 4px; } #messages { padding: 8px 2vw; font-size: 1em; } .video-wrapper { flex-direction: column; gap: 6px; } video { width: 98vw; max-width: 320px; height: 30vw; min-height: 100px; } }
+    </style>
 </head>
 <body>
     <div id="main-container">
-        <h1>KAMOGLE</h1>
-        <div id="chat-area">
-            <div id="messages"></div>
-            <div id="typing-indicator" style="font-style:italic;color:gray;"></div>
-            <div id="input-area">
-                <input type="text" id="message-input" placeholder="Type your message...">
-                <button id="send-btn">Send</button>
-                <button id="next-btn">Next</button>
-                <div id="emoji-picker">
-                    <span class="emoji">😀</span>
-                    <span class="emoji">😂</span>
-                    <span class="emoji">😍</span>
-                    <span class="emoji">😎</span>
-                    <span class="emoji">😭</span>
-                    <span class="emoji">👍</span>
-                    <span class="emoji">❤️</span>
-                    <span class="emoji">🔥</span>
-                </div>
-            </div>
-        </div>
-        <div id="footer">
-            <p>You're chatting with a random stranger on <b>KAMOGLE</b>.<br>
-            <small>This is an open-source clone for learning purposes.</small></p>
+        <div id="header-row">
+            <h2 style="margin:0;font-weight:700;">KAMOGLE</h2>
             <button id="dark-toggle">🌙 Dark Mode</button>
         </div>
+        <div id="video-area">
+            <div class="video-wrapper">
+                <video id="localVideo" autoplay muted playsinline></video>
+                <video id="remoteVideo" autoplay playsinline></video>
+            </div>
+            <div id="video-controls">
+                <button id="start-video-btn">Start Video</button>
+                <button id="mute-btn">Mute</button>
+                <button id="stop-video-btn">Stop Video</button>
+            </div>
+        </div>
+        <div id="chat-area">
+            <div id="messages"></div>
+            <div id="typing-indicator"></div>
+            <div id="input-area">
+                <input id="message-input" type="text" placeholder="Type a message..." autocomplete="off" />
+                <button id="send-btn">Send</button>
+                <button id="next-btn">Next</button>
+            </div>
+        </div>
     </div>
+    <audio id="notif-sound" src="/static/notify.mp3" preload="auto"></audio>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="/static/chat.js"></script>
 </body>
