@@ -206,6 +206,12 @@ socket.on('stranger_disconnected', () => {
     typingIndicator.textContent = '';
     currentRoom = null;
     playNotif();
+    // Automatically find a new stranger after 1.2 seconds
+    setTimeout(() => {
+        socket.emit('find_stranger');
+        messages.innerHTML = '';
+        typingIndicator.textContent = '';
+    }, 1200);
 });
 
 function logDebug(...args) {
