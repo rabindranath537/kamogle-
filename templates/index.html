@@ -223,9 +223,41 @@
         }
         @media (max-width: 600px) {
             #main-container { max-width: 100vw; margin: 0; border-radius: 0; box-shadow: none; }
-            #chat-area { min-height: 50vh; max-height: 90vh; }
-            #input-area { padding: 12px 8px; }
-            #messages { padding: 8px 2vw; font-size: 1em; }
+            #chat-area { min-height: 60vh; max-height: 100vh; padding: 0; }
+            #header-row { padding: 12px 8px 0 8px; min-height: 44px; flex-direction: column; align-items: flex-start; gap: 6px; }
+            #header-row h2 { font-size: 1.1em; letter-spacing: 1px; }
+            #header-row > div { width: 100%; justify-content: space-between; gap: 4px; }
+            #encryption-badge { padding: 3px 6px; font-size: 0.90em; border-radius: 10px; }
+            #dark-toggle { position: static; margin: 0; width: 100%; margin-top: 4px; }
+            #messages { padding: 4px 1vw; font-size: 0.96em; }
+            #messages div, #messages div.user-message, #messages div:not(.user-message) {
+                padding: 6px 8px;
+                border-radius: 8px 4px 8px 8px;
+                margin: 5px 0 5px auto;
+                box-shadow: none;
+                font-size: 0.96em;
+            }
+            #input-area { padding: 6px 2px 6px 2px; gap: 4px; flex-direction: column; align-items: stretch; }
+            #message-input {
+                padding: 7px 7px;
+                border-radius: 7px;
+                font-size: 0.96em;
+            }
+            #send-btn, #next-btn {
+                padding: 7px 0;
+                border-radius: 7px;
+                font-size: 0.96em;
+                min-width: 0;
+                width: 100%;
+                margin: 0 0 4px 0;
+                box-shadow: none;
+                animation: none;
+            }
+            #send-btn { margin-bottom: 2px; }
+            #next-btn { margin-bottom: 0; }
+            #typing-indicator { font-size: 0.93em; margin: 0 0 0 4px; }
+            body { animation: none; }
+            #main-container, #header-row, #input-area, #messages div { box-shadow: none !important; }
         }
     </style>
 </head>
