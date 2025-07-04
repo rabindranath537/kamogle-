@@ -11,6 +11,35 @@ const sendBtn = document.getElementById('send-btn');
 const nextBtn = document.getElementById('next-btn');
 const typingIndicator = document.getElementById('typing-indicator');
 
+// Video chat variables
+const videoArea = document.getElementById('video-area');
+const localVideo = document.getElementById('localVideo');
+const remoteVideo = document.getElementById('remoteVideo');
+const startVideoBtn = document.getElementById('start-video-btn');
+const muteBtn = document.getElementById('mute-btn');
+const stopVideoBtn = document.getElementById('stop-video-btn');
+let localStream = null;
+let peerConnection = null;
+const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+let isMuted = false;
+let isVideoStopped = false;
+
+// E2EE variables
+let myECDHKey = null;
+let myPublicKey = null;
+let sharedSecret = null;
+let aesKey = null;
+
+// Generate ECDH key pair on load
+(async function generateECDH() {
+    myECDHKey = await window.crypto.subtle.generateKey(
+        { name: 'ECDH', namedCurve: 'P-256' },
+        true,
+        ['deriveKey', 'deriveBits']
+    );
+    myPublicKey = await window.crypto.subtle.exportKey('jwk', myECDHKey.publicKey);
+})();
+
 // Find a stranger on page load
 findStranger();
 
@@ -33,13 +62,93 @@ socket.on('stranger_found', (data) => {
     info.style.fontWeight = 'bold';
     messages.appendChild(info);
     playNotif();
+
+    // Send our public key to the peer
+    socket.emit('signal', { room: currentRoom, e2ee_pub: myPublicKey });
 });
 
-// Send message
-sendBtn.addEventListener('click', () => {
+// Handle E2EE key exchange in signaling
+socket.on('signal', async (data) => {
+    if (!peerConnection && data.sdp) {
+        startVideoBtn.click();
+        // Show message to user to turn on their video if not already
+        const info = document.createElement('div');
+        info.textContent = 'Stranger started video. Click "Start Video" to join!';
+        info.style.color = '#1c7ed6';
+        info.style.fontWeight = 'bold';
+        messages.appendChild(info);
+        messages.scrollTop = messages.scrollHeight;
+    }
+    if (data.sdp) {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        if (data.sdp.type === 'offer') {
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            socket.emit('signal', { room: currentRoom, sdp: answer });
+        }
+    }
+    if (data.candidate) {
+        try {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+        } catch (e) {}
+    }
+    if (data.e2ee_pub) {
+        // Import peer's public key
+        const peerPubKey = await window.crypto.subtle.importKey(
+            'jwk', data.e2ee_pub, { name: 'ECDH', namedCurve: 'P-256' }, true, []
+        );
+        // Derive shared secret
+        sharedSecret = await window.crypto.subtle.deriveKey(
+            { name: 'ECDH', public: peerPubKey },
+            myECDHKey.privateKey,
+            { name: 'AES-GCM', length: 256 },
+            false,
+            ['encrypt', 'decrypt']
+        );
+        aesKey = sharedSecret;
+    }
+});
+
+// Encrypt message before sending
+async function encryptMessage(msg) {
+    if (!aesKey) return msg;
+    const enc = new TextEncoder();
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = await window.crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        aesKey,
+        enc.encode(msg)
+    );
+    return {
+        iv: Array.from(iv),
+        ct: Array.from(new Uint8Array(ciphertext))
+    };
+}
+
+// Decrypt message after receiving
+async function decryptMessage(data) {
+    if (!aesKey || !data.iv || !data.ct) return data;
+    const iv = new Uint8Array(data.iv);
+    const ct = new Uint8Array(data.ct);
+    try {
+        const pt = await window.crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv },
+            aesKey,
+            ct
+        );
+        return new TextDecoder().decode(pt);
+    } catch (e) {
+        return '[Encrypted message could not be decrypted]';
+    }
+}
+
+// Send message (encrypt if possible)
+sendBtn.addEventListener('click', async () => {
     const msg = input.value.trim();
     if (msg && currentRoom) {
-        socket.emit('message', { room: currentRoom, msg, sender: myRole });
+        let payload = msg;
+        if (aesKey) payload = await encryptMessage(msg);
+        socket.emit('message', { room: currentRoom, msg: payload, sender: myRole });
         input.value = '';
         socket.emit('typing', { room: currentRoom, typing: false });
     }
@@ -52,7 +161,6 @@ input.addEventListener('keydown', (e) => {
 
 // Listen for typing event from the server
 socket.on('typing', (isTyping) => {
-    const typingIndicator = document.getElementById('typing-indicator');
     typingIndicator.textContent = isTyping ? 'Stranger is typing...' : '';
 });
 
@@ -67,28 +175,23 @@ input.addEventListener('input', () => {
     }
 });
 
-// Receive message
-socket.on('message', (data) => {
+// Receive message (decrypt if possible)
+socket.on('message', async (data) => {
     const msgDiv = document.createElement('div');
-    if (data && data.sender && data.msg) {
-        msgDiv.textContent = `${data.sender} - ${data.msg}`;
-    } else if (typeof data === 'string') {
-        msgDiv.textContent = data;
+    let displayMsg = data && data.msg;
+    if (aesKey && displayMsg && typeof displayMsg === 'object' && displayMsg.iv && displayMsg.ct) {
+        displayMsg = await decryptMessage(displayMsg);
+    }
+    if (data && data.sender && displayMsg) {
+        msgDiv.textContent = `${data.sender} - ${displayMsg}`;
+        if (data.sender === myRole) {
+            msgDiv.classList.add('user-message');
+        }
+    } else if (typeof displayMsg === 'string') {
+        msgDiv.textContent = displayMsg;
     }
     messages.appendChild(msgDiv);
     messages.scrollTop = messages.scrollHeight;
-    playNotif();
-});
-
-// Stranger disconnected
-socket.on('stranger_disconnected', () => {
-    const info = document.createElement('div');
-    info.textContent = 'Stranger disconnected';
-    info.style.color = '#e74c3c';
-    info.style.fontWeight = 'bold';
-    messages.appendChild(info);
-    typingIndicator.textContent = '';
-    currentRoom = null;
     playNotif();
 });
 
@@ -97,14 +200,17 @@ nextBtn.addEventListener('click', () => {
     if (currentRoom) {
         socket.emit('leave_room', { room: currentRoom });
     }
-    findStranger();
+    currentRoom = null;
+    messages.innerHTML = '';
+    typingIndicator.textContent = '';
+    socket.emit('find_stranger');
 });
 
 // Dark mode toggle
 const darkToggle = document.getElementById('dark-toggle');
-darkToggle.addEventListener('click', () => {
-    document.body.classList.toggle('dark');
-    darkToggle.textContent = document.body.classList.contains('dark') ? '☀️ Light Mode' : '🌙 Dark Mode';
+darkToggle.addEventListener('click', function() {
+    document.body.classList.toggle('dark-mode');
+    this.textContent = document.body.classList.contains('dark-mode') ? "☀️ Light Mode" : "🌙 Dark Mode";
 });
 
 // Emoji picker support
@@ -124,4 +230,115 @@ function playNotif() {
 socket.on('disconnect', () => {
     alert('You have been disconnected. Trying to reconnect...');
     window.location.reload();
+});
+
+// Stranger disconnected
+socket.on('stranger_disconnected', () => {
+    const info = document.createElement('div');
+    info.textContent = 'Stranger disconnected';
+    info.style.color = '#e74c3c';
+    info.style.fontWeight = 'bold';
+    messages.appendChild(info);
+    typingIndicator.textContent = '';
+    currentRoom = null;
+    playNotif();
+});
+
+startVideoBtn.addEventListener('click', async () => {
+    if (!localStream) {
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            localVideo.srcObject = localStream;
+            startPeerConnection();
+            videoArea.style.display = 'flex';
+            startVideoBtn.disabled = true;
+            muteBtn.disabled = false;
+            stopVideoBtn.disabled = false;
+        } catch (err) {
+            alert('Could not access camera/mic: ' + err.message);
+            startVideoBtn.disabled = false;
+        }
+    } else {
+        startPeerConnection();
+    }
+});
+
+function startPeerConnection() {
+    if (peerConnection) return;
+    peerConnection = new RTCPeerConnection(rtcConfig);
+    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+    peerConnection.onicecandidate = (event) => {
+        if (event.candidate && currentRoom) {
+            socket.emit('signal', { room: currentRoom, candidate: event.candidate });
+        }
+    };
+    peerConnection.ontrack = (event) => {
+        remoteVideo.srcObject = event.streams[0];
+    };
+    if (myRole === 'You') {
+        peerConnection.createOffer().then(offer => {
+            peerConnection.setLocalDescription(offer);
+            socket.emit('signal', { room: currentRoom, sdp: offer });
+        });
+    }
+}
+
+socket.on('signal', async (data) => {
+    if (!peerConnection && data.sdp) {
+        startVideoBtn.click();
+        // Show message to user to turn on their video if not already
+        const info = document.createElement('div');
+        info.textContent = 'Stranger started video. Click "Start Video" to join!';
+        info.style.color = '#1c7ed6';
+        info.style.fontWeight = 'bold';
+        messages.appendChild(info);
+        messages.scrollTop = messages.scrollHeight;
+    }
+    if (data.sdp) {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        if (data.sdp.type === 'offer') {
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            socket.emit('signal', { room: currentRoom, sdp: answer });
+        }
+    }
+    if (data.candidate) {
+        try {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+        } catch (e) {}
+    }
+});
+
+// Reset video on next/leave
+nextBtn.addEventListener('click', () => {
+    if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+    }
+    if (localVideo) localVideo.srcObject = null;
+    if (remoteVideo) remoteVideo.srcObject = null;
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+    }
+    videoArea.style.display = 'none';
+    startVideoBtn.disabled = false;
+    muteBtn.textContent = 'Mute';
+    stopVideoBtn.textContent = 'Stop Video';
+    muteBtn.disabled = true;
+    stopVideoBtn.disabled = true;
+});
+
+muteBtn.addEventListener('click', () => {
+    if (!localStream) return;
+    isMuted = !isMuted;
+    localStream.getAudioTracks().forEach(track => track.enabled = !isMuted);
+    muteBtn.textContent = isMuted ? 'Unmute' : 'Mute';
+});
+
+stopVideoBtn.addEventListener('click', () => {
+    if (!localStream) return;
+    isVideoStopped = !isVideoStopped;
+    localStream.getVideoTracks().forEach(track => track.enabled = !isVideoStopped);
+    stopVideoBtn.textContent = isVideoStopped ? 'Start Video' : 'Stop Video';
 });
