@@ -1,3 +1,4 @@
+
 const socket = io();
 
 let currentRoom = null;
@@ -237,4 +238,9 @@ socket.on('signal', async (data) => {
         );
         aesKey = sharedSecret;
     }
+});
+
+// Automatic reconnect: when socket reconnects, rejoin the chat queue
+socket.on('reconnect', () => {
+    findStranger();
 });
